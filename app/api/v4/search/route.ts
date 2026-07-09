@@ -1,15 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { search, type SearchOpts } from "@/lib/sm";
+import { search, hitText, type SearchOpts, type SearchFilter } from "@/lib/sm";
+import { memKey, supersededKeys, events } from "@/lib/ledger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// POST /api/v4/search — the read path.
+// POST /api/v4/search — the current-truth read path.
 //
-// Day 1: transparent passthrough to Supermemory Local's hybrid search. Day 3 turns
-// this into the current-truth wrapper: it appends a metadata filter that excludes
-// superseded memories ({ key: "trace_status", value: "superseded", negate: true })
-// and attaches a one-line rationale, so a caller only ever sees the standing truth.
+// Runs Supermemory's hybrid search, then returns only the STANDING truth: memories the
+// ledger marks superseded (drift losers, redundant duplicates) are filtered out, and a
+// one-line rationale is attached to the winners. It also appends a best-effort metadata
+// filter so a Supermemory that honors trace_status excludes superseded rows server-side.
 export async function POST(req: NextRequest) {
   let body: { q?: string } & SearchOpts;
   try {
@@ -21,11 +22,40 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "q is required" }, { status: 400 });
   }
   const { q, ...opts } = body;
+
+  // Server-side exclusion of superseded rows (best-effort; the ledger is authoritative).
+  const currentOnly: SearchFilter = {
+    AND: [{ key: "trace_status", value: "superseded", negate: true }],
+  };
+  const filters: SearchFilter = opts.filters
+    ? { AND: [opts.filters, currentOnly] }
+    : currentOnly;
+
+  let result;
   try {
-    const result = await search(q, opts);
-    return NextResponse.json(result);
+    result = await search(q, { ...opts, filters });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 502 });
   }
+
+  // Authoritative client-side filter + rationale from the local ledger.
+  const superseded = supersededKeys();
+  const evs = events();
+  const kept = [];
+  let excluded = 0;
+  for (const h of result.results) {
+    const key = memKey(hitText(h));
+    if (superseded.has(key)) {
+      excluded++;
+      continue;
+    }
+    const win = evs.find((e) => e.relation === "drift" && e.next.key === key);
+    kept.push({
+      ...h,
+      why: win ? `current truth — superseded an earlier decision on "${win.topic}" (${win.ts.slice(0, 10)})` : undefined,
+    });
+  }
+
+  return NextResponse.json({ results: kept, total: kept.length, excludedSuperseded: excluded, timing: result.timing });
 }

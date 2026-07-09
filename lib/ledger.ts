@@ -15,7 +15,10 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Relation, DetectTier } from "@/lib/car";
 
-const LEDGER_PATH = join(process.cwd(), "data", "ledger.json");
+// Read lazily so tests can redirect it via TRACE_LEDGER_PATH.
+function ledgerPath(): string {
+  return process.env.TRACE_LEDGER_PATH || join(process.cwd(), "data", "ledger.json");
+}
 
 export interface MemoryRef {
   /** Stable key derived from the memory text (customId-independent). */
@@ -65,7 +68,7 @@ function load(): void {
   if (state.loaded) return;
   state.loaded = true;
   try {
-    const raw = JSON.parse(readFileSync(LEDGER_PATH, "utf8")) as { events?: LedgerEvent[] };
+    const raw = JSON.parse(readFileSync(ledgerPath(), "utf8")) as { events?: LedgerEvent[] };
     for (const e of raw.events ?? []) applyToDerived(e);
     state.events = raw.events ?? [];
   } catch {
@@ -75,8 +78,9 @@ function load(): void {
 
 function persist(): void {
   try {
-    mkdirSync(dirname(LEDGER_PATH), { recursive: true });
-    writeFileSync(LEDGER_PATH, JSON.stringify({ events: state.events }, null, 2));
+    const p = ledgerPath();
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify({ events: state.events }, null, 2));
   } catch {
     /* persistence is best-effort; the in-memory ledger still works */
   }

@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* OKLCH design tokens. One place to retune the whole system. */
+:root {
+  --bg: 0.99 0.004 250;
+  --surface: 1 0 0;
+  --border: 0.9 0.006 250;
+  --text: 0.25 0.02 260;
+  --muted: 0.6 0.02 260;
+  --accent: 0.62 0.17 265;
+  --drift: 0.62 0.21 22; /* red: a reversal */
+  --duplicate: 0.62 0.15 250; /* blue: redone work */
+  --reaffirm: 0.68 0.16 150; /* green: a strengthening signal */
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: 0.2 0.02 265;
+    --surface: 0.26 0.02 265;
+    --border: 0.34 0.02 265;
+    --text: 0.94 0.01 260;
+    --muted: 0.72 0.02 260;
+    --accent: 0.72 0.15 265;
+    --drift: 0.7 0.19 22;
+    --duplicate: 0.72 0.13 250;
+    --reaffirm: 0.76 0.14 150;
+  }
+}
+
+html,
+body {
+  background: oklch(var(--bg));
+  color: oklch(var(--text));
+}

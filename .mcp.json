@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "trace": {
+      "command": "node",
+      "args": ["adapters/mcp.mjs"],
+      "env": {
+        "TRACE_URL": "http://localhost:7070"
+      }
+    }
+  }
+}

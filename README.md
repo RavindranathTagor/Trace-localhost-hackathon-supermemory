@@ -42,11 +42,45 @@ or search:
 
 See [docs/RUN-LOCAL.md](docs/RUN-LOCAL.md) for the WSL2 + Ollama setup.
 
+## Use it
+
+```bash
+# 1. Supermemory Local up in WSL2 on :6767 (see docs/RUN-LOCAL.md), then:
+cp .env.example .env.local     # set SUPERMEMORY_API_KEY=sm_xxx
+npm install
+npm run dev                    # Trace on http://localhost:7070
+
+# 2. Watch the guard fire (seeds a small decision history):
+npm run seed
+
+# 3. Open the dashboard: http://localhost:7070
+#    Grab the live CLAUDE.md:  curl "http://localhost:7070/api/brain?format=md"
+```
+
+**Wire it into Claude Code** (or any MCP client) with the included [.mcp.json](.mcp.json):
+`check_before_coding`, `remember`, and `current_truth` become tools your agent can call. The
+MCP server ([adapters/mcp.mjs](adapters/mcp.mjs)) talks to the running Trace app, so detection
+stays local.
+
+Demo script: [docs/DEMO.md](docs/DEMO.md).
+
+## API surface
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v3/documents` | Guarded write: detect + resolve, then store in Supermemory |
+| `POST /api/v4/search` | Current-truth read: superseded memories filtered out, with a rationale |
+| `POST /api/guard` | Dry-run: check an intent against memory without storing |
+| `GET  /api/brain` | Live `CLAUDE.md` / `AGENTS.md` (`?format=md&target=claude`) |
+| `GET  /api/events` | SSE stream of detected relations (powers the dashboard) |
+| `GET  /api/health` | Liveness + whether Supermemory Local is reachable |
+
 ## Status
 
-Under active development during the hackathon build window. Day 1 (foundation: proxy +
-Supermemory Local client + health) is in; the detection engine, resolver, dashboard, and
-MCP server follow.
+Built during the hackathon window. Foundation, the three-tier detection cascade
+(grammar + NLI + judge), the current-truth resolver, the live dashboard, the CLAUDE.md
+generator, and the MCP server are in and unit-tested (`npm test`). The detection engine has
+full offline unit coverage; the end-to-end loop runs against the local Supermemory binary.
 
 ## A note on fresh work
 

@@ -1,91 +1,79 @@
-# Running Trace locally on Windows (WSL2 + Ollama)
+# Running Trace locally on Windows (Docker Desktop)
 
-Supermemory Local ships a macOS/Linux binary, so on Windows 11 it runs inside **WSL2**.
-Services listening in WSL2 are reachable from Windows at `localhost`, so Trace (running
-on Windows via `npm run dev`) can talk to `supermemory-server` at `http://localhost:6767`.
+Supermemory Local ships only macOS and Linux binaries (no Windows build), so on Windows it
+runs inside a Linux container via Docker Desktop. You never open an Ubuntu shell. Trace
+itself runs natively on Windows and just talks to the container at `http://localhost:6767`.
 
 Topology (all local, nothing leaves the machine):
 
 ```
-Windows                         WSL2 (Ubuntu)
-─────────                       ───────────────────────────
-Trace  :7070  ──localhost──►    supermemory-server :6767 ──►  Ollama :11434
-(npm run dev)                   (memory + embeddings)         (extraction + judge)
+Windows (native)                 Docker Desktop (Linux container)
+────────────────                 ────────────────────────────────
+Trace  :7070  ──localhost────►   supermemory-server :6767  ──►  Ollama :11434
+(npm run dev)                    (memory + embeddings)          (on Windows host,
+Ollama :11434 (native app)  ◄────host.docker.internal───────────  reached from container)
 ```
 
-## 1. Install WSL2 (once)
+## 1. Prerequisites (all native Windows installers)
 
-In an elevated PowerShell:
+- **Docker Desktop for Windows** — https://www.docker.com/products/docker-desktop/
+  (it sets up its own Linux engine; you only use the `docker` command).
+- **Ollama for Windows** — https://ollama.com/download . Then pull the model:
+  ```powershell
+  ollama pull qwen2.5:7b
+  ```
+- **Node.js 20+** (you already have it) for running Trace.
+
+## 2. Start Supermemory Local in Docker
+
+From the repo root:
 
 ```powershell
-wsl --install -d Ubuntu
+docker compose up --build
 ```
 
-Reboot if prompted, then open the **Ubuntu** terminal and finish the user setup.
+First boot downloads the Linux binary, initializes the graph engine, and **prints your API
+key** in the `sm_...` format to the logs. Copy it. All state persists in `./.supermemory/`
+(mounted into the container), so restarts keep your key and memories.
 
-## 2. Install Ollama in WSL2 and pull a model
+Verify it is reachable from Windows:
 
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama serve &            # starts the API on :11434
-ollama pull qwen2.5:7b    # extraction + Trace's judge tier
-```
-
-## 3. Install and run Supermemory Local in WSL2
-
-```bash
-curl -fsSL https://supermemory.ai/install | bash
-# fully offline: point extraction at local Ollama
-export OPENAI_BASE_URL=http://localhost:11434/v1
-export OPENAI_API_KEY=ollama
-export OPENAI_MODEL=qwen2.5:7b
-supermemory-server
-```
-
-First boot prints your API key in the `sm_...` format and confirms it is listening on
-`http://localhost:6767`. Copy that key. All state lives in `./.supermemory/`.
-
-## 4. Verify reachability from Windows
-
-In a Windows terminal (Git Bash / PowerShell):
-
-```bash
+```powershell
 curl http://localhost:6767/v3/documents -H "Authorization: Bearer sm_xxx"
 ```
 
-Any HTTP response (even 401/404) means the server is up and reachable across the WSL
-boundary. A connection error means WSL networking is not forwarding yet; restart the
-server or run `wsl --shutdown` and relaunch.
+Any HTTP response (even 401/404) means it is up and the port is mapped.
 
-## 5. Configure and run Trace (on Windows)
+> Troubleshooting: if `curl` cannot connect but the container is running, the server may be
+> binding to localhost inside the container. Check `docker compose logs supermemory` for the
+> bind address; the compose file already sets `HOST`/`PORT` to `0.0.0.0:6767` to avoid this.
+> On Apple Silicon rebuild with `--build-arg SM_PLATFORM=linux-arm64`.
 
-```bash
-cd d:/Hangover/trace-supermemory
-cp .env.example .env.local     # set SUPERMEMORY_API_KEY=sm_xxx
-npm run dev                    # http://localhost:7070
+## 3. Run Trace (native Windows)
+
+```powershell
+copy .env.example .env.local     # set SUPERMEMORY_API_KEY=sm_xxx
+npm install
+npm run dev                      # http://localhost:7070
 ```
 
-Health check, confirms Trace can see Supermemory Local:
+Health check should now show Supermemory reachable:
 
-```bash
+```powershell
 curl http://localhost:7070/api/health
 # { "ok": true, "supermemory": { "reachable": true, ... } }
 ```
 
-Round-trip a memory through Trace's proxy:
+Seed the demo history and watch the guard fire:
 
-```bash
-curl -X POST http://localhost:7070/api/v3/documents \
-  -H "Content-Type: application/json" \
-  -d '{"content":"We standardized on Postgres for all services."}'
-
-curl -X POST http://localhost:7070/api/v4/search \
-  -H "Content-Type: application/json" \
-  -d '{"q":"database"}'
+```powershell
+npm run seed
 ```
+
+Open the dashboard at http://localhost:7070.
 
 ## Offline proof
 
-Once the model is pulled and the server is running, disable networking (airplane mode
-or `wsl --shutdown` of any non-essential distro). Add and search still work: embeddings,
-storage, extraction, and Trace's detection are all on-device.
+With the model pulled and the container running, turn off networking. Add and search still
+work: embeddings, storage, extraction (Ollama), and Trace's detection are all on your
+machine. Data lives only in `./.supermemory/`.

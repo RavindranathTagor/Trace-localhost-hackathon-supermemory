@@ -40,12 +40,13 @@ or search:
 - **Coding-agent surfaces**: a live `CLAUDE.md` / `AGENTS.md` generator and an MCP server
   (`check_before_coding`, `remember`, `current_truth`) your agent calls before it writes code.
 
-See [docs/RUN-LOCAL.md](docs/RUN-LOCAL.md) for the WSL2 + Ollama setup.
+See [docs/RUN-LOCAL.md](docs/RUN-LOCAL.md) for the Docker + Ollama setup on Windows.
 
 ## Use it
 
 ```bash
-# 1. Supermemory Local up in WSL2 on :6767 (see docs/RUN-LOCAL.md), then:
+# 1. Supermemory Local up on :6767 (Docker on Windows, see docs/RUN-LOCAL.md):
+docker compose up --build      # first boot prints your sm_... key
 cp .env.example .env.local     # set SUPERMEMORY_API_KEY=sm_xxx
 npm install
 npm run dev                    # Trace on http://localhost:7070

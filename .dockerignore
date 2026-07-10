@@ -1,0 +1,7 @@
+node_modules
+.next
+.git
+.supermemory
+.models
+data/ledger.json
+*.log

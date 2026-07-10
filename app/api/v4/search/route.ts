@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { search, hitText, type SearchOpts, type SearchFilter } from "@/lib/sm";
+import { search, hitText, type SearchOpts } from "@/lib/sm";
 import { memKey, supersededKeys, events } from "@/lib/ledger";
 
 export const runtime = "nodejs";
@@ -23,17 +23,13 @@ export async function POST(req: NextRequest) {
   }
   const { q, ...opts } = body;
 
-  // Server-side exclusion of superseded rows (best-effort; the ledger is authoritative).
-  const currentOnly: SearchFilter = {
-    AND: [{ key: "trace_status", value: "superseded", negate: true }],
-  };
-  const filters: SearchFilter = opts.filters
-    ? { AND: [opts.filters, currentOnly] }
-    : currentOnly;
-
+  // Note: we deliberately do NOT push a Supermemory-side `trace_status != superseded`
+  // filter here. A negated-equality metadata filter also excludes rows that have no
+  // trace_status at all (i.e. every ordinary memory), which would hide everything. The
+  // local ledger below is the authoritative, correct current-truth filter.
   let result;
   try {
-    result = await search(q, { ...opts, filters });
+    result = await search(q, opts);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 502 });

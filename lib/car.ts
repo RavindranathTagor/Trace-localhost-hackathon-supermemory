@@ -219,14 +219,21 @@ export function classify(
       const claimAff = na.filter((c) => !c.negated);
       const priorAff = da.filter((c) => !c.negated);
       if (claimAff.length && priorAff.length) {
-        const different = claimAff.some((a) =>
-          priorAff.every((b) => !sameObject(a.phrase, b.phrase)),
+        // A genuinely NEW choice: different from every prior choice AND not already named
+        // in the prior text. The second check stops a REstatement of the same decision
+        // ("standardized on Postgres" vs a paraphrase that also says Postgres) from looking
+        // like a switch just because it carries a replacement verb.
+        const newChoices = claimAff.filter(
+          (a) =>
+            priorAff.every((b) => !sameObject(a.phrase, b.phrase)) &&
+            phraseSim(a.phrase, prior) < th.sameChoice,
         );
-        if (different) {
+        if (newChoices.length) {
+          const a = newChoices[0].phrase, b = priorAff[0].phrase;
           consider({
             relation: "drift", confidence: 0.6 + topicSim * 0.35, topicSim, stance: -1,
-            reason: `switches to "${claimAff[0].phrase}" where the prior chose "${priorAff[0].phrase}"`,
-            newChoice: claimAff[0].phrase, priorChoice: priorAff[0].phrase, tier: "grammar",
+            reason: `switches to "${a}" where the prior chose "${b}"`,
+            newChoice: a, priorChoice: b, tier: "grammar",
           });
         }
       }

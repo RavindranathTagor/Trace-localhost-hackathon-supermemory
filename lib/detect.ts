@@ -69,8 +69,11 @@ async function classifyPair(next: string, prior: Prior, deps: DetectDeps): Promi
     }
   }
 
-  // Tier 3: confirm borderline alerts; a veto drops the pair.
-  if (isAlert(v.relation) && v.confidence < BANDS.judgeSure && deps.judge) {
+  // Tier 3: confirm alerts; a veto drops the pair. NLI is the least reliable tier (it can
+  // read unrelated same-domain notes as contradictions), so NLI-derived alerts are ALWAYS
+  // judged, regardless of confidence; grammar alerts are judged only when not clearly sure.
+  const needsJudge = isAlert(v.relation) && (v.tier === "nli" || v.confidence < BANDS.judgeSure);
+  if (needsJudge && deps.judge) {
     const j = await deps.judge(next, prior.text, v.relation);
     if (j) {
       if (!j.real || j.relation === "none") return null;
@@ -78,6 +81,10 @@ async function classifyPair(next: string, prior: Prior, deps: DetectDeps): Promi
         ...v, relation: j.relation, reason: j.reason || v.reason, tier: "judge",
         confidence: Math.max(v.confidence, 0.75),
       };
+    } else if (v.tier === "nli") {
+      // Fail closed: an NLI-derived alert that the judge could not confirm is dropped
+      // rather than trusted, since NLI alone is the least reliable signal.
+      return null;
     }
   }
 
@@ -85,16 +92,30 @@ async function classifyPair(next: string, prior: Prior, deps: DetectDeps): Promi
   return { ...v, prior: prior.text, priorId: prior.id };
 }
 
-/** Run the cascade over all priors and return ranked alerts + reaffirm signals. */
+/** Cheap grammar-only score to order priors before spending any LLM calls: grammar
+ *  alerts first, then reaffirms, then on-topic priors (NLI candidates) by similarity. */
+function gradeScore(next: string, p: Prior): number {
+  const g = classify(next, p.text, p.similarity);
+  if (isAlert(g.relation)) return 100 + g.confidence;
+  if (g.relation === "reaffirm") return 50 + g.confidence;
+  return p.similarity;
+}
+
+/** Run the cascade and return ranked alerts + reaffirm signals.
+ *  Supermemory can return many related priors; judging each with the local LLM would be
+ *  slow, so we grade cheaply first, run the full cascade only on the top candidates, and
+ *  stop at the first CONFIRMED alert. This bounds LLM calls (typically one) per write. */
 export async function detect(
   next: string,
   priors: Prior[],
-  deps: DetectDeps = { nli: defaultNli, judge: defaultJudge },
+  deps: DetectDeps = { nli: config.detect.useNli ? defaultNli : undefined, judge: defaultJudge },
 ): Promise<DetectResult> {
+  const ordered = [...priors].sort((a, b) => gradeScore(next, b) - gradeScore(next, a)).slice(0, 5);
   const results: Alignment[] = [];
-  for (const p of priors) {
+  for (const p of ordered) {
     const a = await classifyPair(next, p, deps);
     if (a) results.push(a);
+    if (a && isAlert(a.relation)) break; // first confirmed alert wins; keeps it fast
   }
   results.sort((a, b) => b.confidence - a.confidence);
   return {

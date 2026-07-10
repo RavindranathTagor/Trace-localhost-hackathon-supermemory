@@ -18,15 +18,25 @@ describe("detect cascade", () => {
     expect(judge).not.toHaveBeenCalled();
   });
 
-  it("rescues an on-topic pair the grammar missed, via NLI", async () => {
+  it("rescues an on-topic pair the grammar missed via NLI, then requires the judge to confirm", async () => {
     const nli = vi.fn(async () => contradiction);
-    const judge = vi.fn(async () => null);
+    const judge = vi.fn(async () => ({ real: true, relation: "drift" as const, reason: "reverses the relational choice" }));
     // No decision grammar in either line, so the grammar tier returns none.
     const priors: Prior[] = [{ text: "Our system of record is the relational database.", similarity: 0.72, id: "p1" }];
     const r = await detect("Honestly the relational approach has been holding us back lately.", priors, { nli, judge });
     expect(nli).toHaveBeenCalledOnce();
+    expect(judge).toHaveBeenCalledOnce(); // NLI alerts are always judged
     expect(r.top?.relation).toBe("drift");
-    expect(r.top?.tier).toBe("nli");
+    expect(r.top?.tier).toBe("judge");
+  });
+
+  it("drops an NLI alert the judge cannot confirm (fail closed)", async () => {
+    const nli = vi.fn(async () => contradiction);
+    const judge = vi.fn(async () => null); // judge unavailable
+    const priors: Prior[] = [{ text: "Our system of record is the relational database.", similarity: 0.72, id: "p1" }];
+    const r = await detect("Honestly the relational approach has been holding us back lately.", priors, { nli, judge });
+    expect(r.top).toBeNull();
+    expect(r.alerts).toHaveLength(0);
   });
 
   it("treats an NLI entailment as a reaffirm signal, not an alert", async () => {

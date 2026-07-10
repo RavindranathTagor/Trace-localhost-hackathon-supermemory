@@ -29,6 +29,10 @@ export const config = {
   detect: {
     // Below this Supermemory similarity, a prior is treated as a different topic.
     topicGate: num("TRACE_TOPIC_GATE", 0.4),
+    // The NLI tier is OFF by default: the small off-the-shelf cross-encoder labels
+    // unrelated same-domain notes as contradictions, which hurts precision. Grammar +
+    // the judge are precise on their own. Enable once the model is calibrated.
+    useNli: (process.env.TRACE_USE_NLI ?? "").toLowerCase() === "true",
   },
 } as const;
 
